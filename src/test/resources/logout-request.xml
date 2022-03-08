@@ -1,0 +1,12 @@
+
+<saml2p:LogoutRequest Destination="destination"
+	ID="a403f19f0e52dbf74hhd6h0ef206a6c"
+	IssueInstant="2022-02-25T13:44:46.286Z" Version="2.0"
+	xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol">
+	<saml2:Issuer
+		xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion">relyingissuer</saml2:Issuer>
+
+	<saml2:NameID
+		Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+		xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion">d23asd</saml2:NameID>
+</saml2p:LogoutRequest>
