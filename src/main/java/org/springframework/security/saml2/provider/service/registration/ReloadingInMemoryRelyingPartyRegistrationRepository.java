@@ -21,8 +21,11 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import org.slf4j.Logger;
@@ -36,8 +39,8 @@ import org.springframework.util.Assert;
 public class ReloadingInMemoryRelyingPartyRegistrationRepository implements RelyingPartyRegistrationRepository, Iterable<RelyingPartyRegistration> {
 
 	private final Map<String, RelyingPartyRegistrationData> byRegistrationId;
-	
-	private final Timer timer;
+
+    private final ScheduledExecutorService executor;
 	
     private long maxRefreshDelay = 14400000;
 
@@ -46,7 +49,7 @@ public class ReloadingInMemoryRelyingPartyRegistrationRepository implements Rely
 	private static final Logger logger = LoggerFactory.getLogger(ReloadingInMemoryRelyingPartyRegistrationRepository.class);
 
 	public ReloadingInMemoryRelyingPartyRegistrationRepository(Collection<Supplier<RelyingPartyRegistration>> registrationSuppliers) {
-		timer = new Timer("MetadataReloadTimer");
+		executor = Executors.newSingleThreadScheduledExecutor();
 		Assert.notEmpty(registrationSuppliers, "registrationSuppliers cannot be empty");
 		this.byRegistrationId = createMappingToIdentityProvider(registrationSuppliers);
 	}
@@ -56,9 +59,13 @@ public class ReloadingInMemoryRelyingPartyRegistrationRepository implements Rely
             throw new Saml2Exception("Minimum refresh delay " + minRefreshDelay
                     + " is greater than maximum refresh delay " + maxRefreshDelay);
         }
+        if (minRefreshDelay < 1000) {
+            throw new Saml2Exception("Minimum refresh delay " + minRefreshDelay
+                    + " must be greater than 1000ms");
+        }
 		this.maxRefreshDelay = maxRefreshDelay;
-		this.minRefreshDelay = minRefreshDelay;
-		timer = new Timer("ReloadingInMemoryRelyingPartyRegistrationRepository");
+		this.minRefreshDelay = minRefreshDelay;		
+		executor = Executors.newSingleThreadScheduledExecutor();
 		Assert.notEmpty(registrationSuppliers, "registrationSuppliers cannot be empty");
 		this.byRegistrationId = createMappingToIdentityProvider(registrationSuppliers);
 	}
@@ -81,8 +88,14 @@ public class ReloadingInMemoryRelyingPartyRegistrationRepository implements Rely
 	
 	private void refresh(RelyingPartyRegistrationData data) {
 		logger.debug("Beginning refresh metadata for registrationId={}", data.getRegistration().getRegistrationId());
-		RelyingPartyRegistration rpr = data.getSupplier().get();
-		String key = rpr.getRegistrationId();
+		String key = data.getRegistration().getRegistrationId();
+		RelyingPartyRegistration rpr = null;
+		try {
+			rpr = data.getSupplier().get();
+		} catch (Exception e) {
+			logger.error("Unable to refresh relying party registration, leaving old one. Next attempt in minRetryDelay", e);
+			rpr = data.getRegistration();
+		}
 		data = new RelyingPartyRegistrationData(rpr, data.getSupplier());
 		byRegistrationId.replace(key, data);
 		logger.debug("Refresh metadata for registrationId={} successfull", data.getRegistration().getRegistrationId());
@@ -92,14 +105,14 @@ public class ReloadingInMemoryRelyingPartyRegistrationRepository implements Rely
 	private void schedule(RelyingPartyRegistrationData data) {
 		logger.debug("Schedule refresh metadata for registrationId={}", data.getRegistration().getRegistrationId());
 		Instant nextRefresh = calculateNextRefreshInstant(data);
-		timer.schedule(new TimerTask() {
+		executor.schedule(new TimerTask() {
 
 			@Override
 			public void run() {
 				refresh(data);	
 			}
 			
-		}, nextRefresh.toEpochMilli() - System.currentTimeMillis());
+		}, nextRefresh.toEpochMilli() - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
 		logger.debug("Refresh metadata for registrationId={} scheduled", data.getRegistration().getRegistrationId());
 	}
 	
@@ -138,7 +151,7 @@ public class ReloadingInMemoryRelyingPartyRegistrationRepository implements Rely
 	}
 	
 	public void destroy() {
-		this.timer.cancel();
+		this.executor.shutdown();
 	}
 
 	private final class RelyingPartyRegistrationData {

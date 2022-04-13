@@ -118,9 +118,8 @@ public final class TestOpenSamlObjects {
 
 	static ArtifactResponse artifactResponse(String destination, String issuerEntityId) {
 		ArtifactResponse artifactResponse = build(ArtifactResponse.DEFAULT_ELEMENT_NAME);
-		artifactResponse.setID("AR" + UUID.randomUUID().toString());
+		artifactResponse.setID("AR_" + UUID.randomUUID().toString());
 		artifactResponse.setVersion(SAMLVersion.VERSION_20);
-		artifactResponse.setID("_" + UUID.randomUUID().toString());
 		artifactResponse.setDestination(destination);
 		artifactResponse.setIssuer(issuer(issuerEntityId));
 		artifactResponse.setMessage(response(destination, issuerEntityId));
@@ -132,9 +131,8 @@ public final class TestOpenSamlObjects {
 
 	static Response response(String destination, String issuerEntityId) {
 		Response response = build(Response.DEFAULT_ELEMENT_NAME);
-		response.setID("R" + UUID.randomUUID().toString());
+		response.setID("R_" + UUID.randomUUID().toString());
 		response.setVersion(SAMLVersion.VERSION_20);
-		response.setID("_" + UUID.randomUUID().toString());
 		response.setDestination(destination);
 		response.setIssuer(issuer(issuerEntityId));
 		return response;

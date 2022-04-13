@@ -65,6 +65,8 @@ import org.opensaml.saml.saml2.core.Response;
 import org.opensaml.saml.saml2.core.StatusCode;
 import org.opensaml.saml.saml2.core.StatusResponseType;
 import org.opensaml.saml.saml2.core.SubjectConfirmation;
+import org.opensaml.saml.saml2.core.impl.ResponseMarshaller;
+import org.opensaml.saml.saml2.core.impl.ResponseUnmarshaller;
 import org.opensaml.saml.saml2.encryption.Decrypter;
 import org.opensaml.saml.security.impl.SAMLSignatureProfileValidator;
 import org.opensaml.xmlsec.signature.support.SignaturePrevalidator;
@@ -87,6 +89,7 @@ import org.springframework.security.saml2.provider.service.registration.RelyingP
 import org.springframework.util.Assert;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.w3c.dom.Element;
 
 /**
  * Implementation of {@link AuthenticationProvider} for SAML authentications when
@@ -161,11 +164,21 @@ public final class OpenSamlArtifactAuthenticationProvider implements Authenticat
 	private Converter<AssertionToken, Saml2ResponseValidatorResult> assertionValidator = createCompatibleAssertionValidator();
 
 	private Converter<ResponseToken, ? extends AbstractAuthenticationToken> responseAuthenticationConverter = createCompatibleResponseAuthenticationConverter();
-
+	
+	private final ResponseUnmarshaller responseUnmarshaller;
+	
+	private final ResponseMarshaller responseMarshaller;
+	
+	
 	/**
 	 * Creates an {@link OpenSamlArtifactAuthenticationProvider}
 	 */
 	public OpenSamlArtifactAuthenticationProvider() {
+		XMLObjectProviderRegistry registry = ConfigurationService.get(XMLObjectProviderRegistry.class);
+		this.responseUnmarshaller = (ResponseUnmarshaller) registry.getUnmarshallerFactory()
+				.getUnmarshaller(Response.DEFAULT_ELEMENT_NAME);
+		this.responseMarshaller = (ResponseMarshaller) registry.getMarshallerFactory()
+				.getMarshaller(Response.DEFAULT_ELEMENT_NAME);
 	}
 
 	/**
@@ -429,7 +442,7 @@ public final class OpenSamlArtifactAuthenticationProvider implements Authenticat
 	public Authentication authenticate(Authentication authentication) throws AuthenticationException {
 		try {
 			Saml2ArtifactAuthenticationToken token = (Saml2ArtifactAuthenticationToken) authentication;
-			//validateArtifactResponse(token);
+			validateArtifactResponse(token);
 			Response response = parseResponse(token.getSaml2ArtifactResponse());
 			process(token, response);
 			return this.responseAuthenticationConverter.convert(new ResponseToken(response, token.getSaml2ArtifactResponse(), token));
@@ -452,13 +465,20 @@ public final class OpenSamlArtifactAuthenticationProvider implements Authenticat
 		if (!(message instanceof Response)) {
 			throw new Saml2AuthenticationException(new Saml2Error(Saml2ErrorCodes.MALFORMED_RESPONSE_DATA, "ArtifactResponse does not contain Response"));
 		}
-		return (Response) message;
+		try {
+			Element element = responseMarshaller.marshall(message);
+			return (Response) this.responseUnmarshaller.unmarshall(element);
+		}
+		catch (Exception ex) {
+			throw createAuthenticationException(Saml2ErrorCodes.MALFORMED_RESPONSE_DATA, ex.getMessage(), ex);
+		}
 	}
 	
 	private void validateArtifactResponse(Saml2ArtifactAuthenticationToken token) {
 		ArtifactResponse artifactResponse = token.getSaml2ArtifactResponse();
 		String issuer = artifactResponse.getIssuer().getValue();
 		logger.debug(LogMessage.format("Processing SAML artifactResponse from %s", issuer));
+		logger.debug(LogMessage.format("AAAAA ID %s", artifactResponse.getID()));
 
 		ResponseToken responseToken = new ResponseToken(null, artifactResponse, token);
 		Saml2ResponseValidatorResult result = Saml2ResponseValidatorResult.success();
@@ -492,6 +512,7 @@ public final class OpenSamlArtifactAuthenticationProvider implements Authenticat
 	}
 	
 	private void process(Saml2ArtifactAuthenticationToken token, Response response) {
+		logger.debug(LogMessage.format("BBBBBB ID %s", response.getID()));
 		ArtifactResponse artifactResponse = token.getSaml2ArtifactResponse();
 		String issuer = response.getIssuer().getValue();
 		logger.debug(LogMessage.format("Processing SAML response from %s", issuer));
@@ -504,6 +525,7 @@ public final class OpenSamlArtifactAuthenticationProvider implements Authenticat
 		Saml2ResponseValidatorResult result = this.responseValidator.convert(responseToken);
 		boolean allAssertionsSigned = true;
 		for (Assertion assertion : response.getAssertions()) {
+			logger.debug(LogMessage.format("CCCCC ID %s", assertion.getID()));
 			AssertionToken assertionToken = new AssertionToken(assertion, token);
 			result = result.concat(this.assertionSignatureValidator.convert(assertionToken));
 			allAssertionsSigned = allAssertionsSigned && assertion.isSigned();
