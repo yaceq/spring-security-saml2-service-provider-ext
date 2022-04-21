@@ -138,7 +138,7 @@ public final class Saml2RelyingPartyInitiatedLogoutSuccessHandler implements Log
 			this.logoutRequestRepository.saveLogoutRequest(logoutRequest, request, response);
 			doPost(response, logoutRequest);
 		} else {
-			doSOAP(request, response, logoutRequest);
+			doSOAP(request, response, logoutRequest, authentication);
 		}
 	}
 
@@ -221,16 +221,16 @@ public final class Saml2RelyingPartyInitiatedLogoutSuccessHandler implements Log
 		return html.toString();
 	}
 
-	private void doSOAP(HttpServletRequest request, HttpServletResponse response, Saml2LogoutRequest logoutRequest)
+	private void doSOAP(HttpServletRequest request, HttpServletResponse response, Saml2LogoutRequest logoutRequest, Authentication authentication)
 			throws IOException, ServletException {
 		String location = logoutRequest.getLocation();
 		XMLObject req = logoutRequest.getXmlSamlRequest();
 		XMLObject resp = this.soapClient.send(req, location, null);
-		validateSoapResponse(request, response, logoutRequest, resp);
+		validateSoapResponse(request, response, logoutRequest, resp, authentication);
 	}
 
 	private void validateSoapResponse(HttpServletRequest request, HttpServletResponse response,
-			Saml2LogoutRequest logoutRequest, XMLObject resp) throws IOException, ServletException {
+			Saml2LogoutRequest logoutRequest, XMLObject resp, Authentication authentication) throws IOException, ServletException {
 		RelyingPartyRegistration registration = this.relyingPartyRegistrationResolver.resolve(request,
 				logoutRequest.getRelyingPartyRegistrationId());
 		if (registration == null) {
@@ -259,7 +259,7 @@ public final class Saml2RelyingPartyInitiatedLogoutSuccessHandler implements Log
 			this.logger.debug(LogMessage.format("Failed to validate LogoutResponse: %s", result.getErrors()));
 			return;
 		}
-		this.logoutSuccessHandler.onLogoutSuccess(request, response, null);
+		this.logoutSuccessHandler.onLogoutSuccess(request, response, authentication);
 	}
 	
 
